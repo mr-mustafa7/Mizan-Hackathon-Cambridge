@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trialgrid"
+version = "0.1.0"
+description = "A human-supervised agent team answering multi-site trial feasibility without sharing patient data"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = ["flwr==1.35.0"]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["trialgrid"]
+
+[tool.flwr.app]
+publisher = "local"
+display-name = "TrialGrid"
+flwr-version-target = "1.35.0"
+fab-include = ["trialgrid/**/*.py"]
+
+[tool.flwr.app.config.agent]
+input = "We are opening the uncommon-EGFR NSCLC protocol. Can it recruit across our network?"
+
+[tool.flwr.app.config.model]
+id = "minimax-m3"
+
+[tool.flwr.app.config.policy]
+min-cell = 5
+require-approval = true
+approval-token = ""
+
+[tool.flwr.app.components]
+agentapp = "trialgrid.agent_app:app"
