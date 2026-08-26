@@ -107,6 +107,17 @@ strings and no patient record still crosses the wire.
 ## The demonstration
 
 ```bash
+uv run python -m trialgrid.web      # opens http://localhost:8000
+```
+
+A projector-legible page with two buttons. Standard library only — no web framework, no
+build step. Every number on it comes from a live call into the same pipeline the AgentApp
+runs; the browser computes nothing itself, so the demo cannot drift from the system it
+claims to show.
+
+Terminal version, if you prefer:
+
+```bash
 uv run python -m trialgrid.demo
 ```
 
