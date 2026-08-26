@@ -13,13 +13,13 @@ not in this file with a source, it does not go in the README, the demo, or the p
 
 | Figure | Exact claim | Source |
 |---|---|---|
-| **$170M** | The global investigative site community spent $170M in 2024 completing feasibility assessments and site qualification visits for FDA-regulated industry-funded trials | Tufts CSDD survey, fielded April–July 2024, reported in [Applied Clinical Trials](https://www.appliedclinicaltrialsonline.com/view/benchmarking-the-investigative-site-qualification-process) |
+| **\$170M** | The global investigative site community spent \$170M in 2024 completing feasibility assessments and site qualification visits for FDA-regulated industry-funded trials | Tufts CSDD survey, fielded April–July 2024, reported in [Applied Clinical Trials](https://www.appliedclinicaltrialsonline.com/view/benchmarking-the-investigative-site-qualification-process) |
 | **2,500 hours** | Average hours per year, per investigative site, dedicated to feasibility and qualification | Same |
-| **~$7,500** | Median annual financial investment per site to support feasibility assessments and site qualification visits | Same |
+| **~\$7,500** | Median annual financial investment per site to support feasibility assessments and site qualification visits | Same |
 | **57% → 76%** | Prevalence of protocols with at least one substantial amendment, phases I–IV, rose from 57% (2015) to 76% | Tufts CSDD, [New Benchmarks on Protocol Amendment Practices](https://link.springer.com/article/10.1007/s43441-024-00622-9) |
 | **82%** | Phase III protocols with at least one substantial amendment, 2018–2021, up from 66% in 2013–2015 | Same |
 | **2.3 → 3.5** | Mean substantial amendments per protocol, rising to 3.5 by 2022–2023 | Same |
-| **$141,000 / $535,000** | Median *direct* cost to implement one substantial amendment — **$141k Phase II, $535k Phase III**. Not a range for a single trial | Same |
+| **\$141,000 / \$535,000** | Median *direct* cost to implement one substantial amendment — **\$141k Phase II, \$535k Phase III**. Not a range for a single trial | Same |
 | **21–26%** | Screen-failure rates across three French cancer centres in early-phase trials | [ESMO Open, 2025](https://www.esmoopen.com/article/S2059-7029(25)01200-1/fulltext) |
 | **47.5%** | Current inclusion criteria deem ineligible 47.5% of patients still alive at 6 months | [Evaluating eligibility criteria of oncology trials using real-world data and AI](https://pmc.ncbi.nlm.nih.gov/articles/PMC9007176/) |
 | **No AE increase** | Trials with more relaxed laboratory eligibility thresholds did not have more treatment withdrawals due to adverse events than trials with stringent thresholds | Same |

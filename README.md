@@ -19,9 +19,9 @@ Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (
 
 ## The problem
 
-Investigative sites spent **$170M in 2024** completing feasibility assessments and site
+Investigative sites spent **\$170M in 2024** completing feasibility assessments and site
 qualification visits for FDA-regulated industry trials — **2,500 hours per site per year**,
-a median of roughly **$7,500** each. (Tufts CSDD, fielded April–July 2024.)
+a median of roughly **\$7,500** each. (Tufts CSDD, fielded April–July 2024.)
 
 Every figure in this README is listed with its source in [SOURCES.md](SOURCES.md), including
 the ones that were removed because they could not be verified.
@@ -232,7 +232,7 @@ me patients, and is it safe to relax?"** — asked before the protocol is signed
 afterwards the fix is an amendment.
 
 **76% of protocols now carry at least one substantial amendment**, up from 57% in 2015, and
-the mean is **3.5**. The median direct cost of one is **$141k in Phase II and $535k in
+the mean is **3.5**. The median direct cost of one is **\$141k in Phase II and \$535k in
 Phase III**. Eligibility criteria are among the things amendments change.
 
 *(Whether amendments are avoidable is genuinely contested — one analysis says 45% are, newer
