@@ -5,16 +5,6 @@
 Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (Infrastructure).
 **Source:** [github.com/mr-mustafa7/Mizan-Hackathon-Cambridge](https://github.com/mr-mustafa7/Mizan-Hackathon-Cambridge)
 
-> **Mizan Grid is a separate, hackathon-built exploration — not the company.** The
-> three-tier idea (a patient missing one fact belongs at the top of a worklist, not in
-> the "no" pile) comes from [Mizan](https://mizan.health), a clinical trial eligibility
-> engine the author is building separately. Mizan is a single-site product with no
-> cross-site capability; that gap is what this repository explores. **No Mizan source
-> code is published here.** The eligibility module was written from scratch today
-> against the same idea — the four-state model it uses (`MET / NOT_MET / UNKNOWN /
-> NOT_APPLICABLE`) is not original to either of us; the NIH's TrialGPT emits the same
-> four states, and it is public domain.
-
 ---
 
 ## The problem
