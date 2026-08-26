@@ -118,7 +118,7 @@ Two model calls in the whole pipeline — one to route the question, one to phra
 
 ## Relationship to Mizan
 
-The three-tier idea — that a patient who fails nothing but is missing a fact belongs at the top of a worklist rather than in the "no" pile — comes from [Mizan](https://mizan.health), a clinical trial eligibility engine the author is building separately. Mizan is a single-site product and has no cross-site capability; that gap is what this hackathon project explores.
+The three-tier idea — that a patient who fails nothing but is missing a fact belongs at the top of a worklist rather than in the "no" pile — comes from Mizan, a clinical trial eligibility engine the author is building separately. Mizan is a single-site product and has no cross-site capability; that gap is what this hackathon project explores.
 
 **No Mizan source code is in this repository.** The eligibility module here was written from scratch today against the same idea. The four-state model (`MET / NOT_MET / UNKNOWN / NOT_APPLICABLE`) is not original to either — the NIH's TrialGPT emits the same four states, and it is public domain.
 
