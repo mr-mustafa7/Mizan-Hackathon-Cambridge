@@ -3,6 +3,7 @@
 **A human-supervised team of agents that answers multi-site clinical trial feasibility — without a single patient record leaving any hospital.**
 
 Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (Infrastructure).
+**Source:** [github.com/mr-mustafa7/Mizan-Hackathon-Cambridge](https://github.com/mr-mustafa7/Mizan-Hackathon-Cambridge)
 
 ---
 
