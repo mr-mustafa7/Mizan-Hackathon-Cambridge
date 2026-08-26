@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "trialgrid"
-version = "0.1.0"
+version = "0.1.1"
 description = "A human-supervised agent team answering multi-site trial feasibility without sharing patient data"
 license = "Apache-2.0"
 requires-python = ">=3.11"
