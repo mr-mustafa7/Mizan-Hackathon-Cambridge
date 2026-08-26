@@ -1,16 +1,22 @@
-"""TrialGrid — a human-supervised agent team answering multi-site feasibility.
+"""TrialGrid — a human-supervised agent team answering trial feasibility.
 
-    site agents (rules only, no model)  ->  egress guard  ->  coordinator  ->  human  ->  answer
+Two trust boundaries, one pipeline.
 
-A sponsor asks whether a protocol can recruit across a network. Each site
-answers from its own screening log; nothing but counts crosses the wire; a
-human approves before any number is released.
+    WEB (untrusted)                        HOSPITALS (private)
+    Retriever -> Sanitizer -> Drafter  ->  site agents  ->  guard -> Challenger -> human
+    cannot see patients                    cannot see the web
+                                           cannot see each other
 
-**Two model calls, total.** The sponsor's question is turned into a protocol
-selection once, and the approved aggregate is phrased once. Everything between
-them is deterministic. That is a safety property first — no model decides who
-is eligible — and it is also what keeps the run inside SuperGrid's five-minute
-task timeout, since the expensive steps do not scale with the number of sites.
+The agents that read the open web are never shown a patient. The agents that
+evaluate patients are never shown the web, make no model call at all, and can
+emit nothing but counts. Between them sits a Gatekeeper written in ordinary
+Python that verifies every criterion traces to a quote that genuinely occurs in
+an approved source.
+
+Four model calls, bounded: sanitize, draft, challenge, disclose. The stages
+that decide anything sit between them and are deterministic. That is a safety
+property first, and it is also what keeps a run inside SuperGrid's five-minute
+task timeout, since cost does not grow with the number of sites.
 """
 
 from __future__ import annotations
@@ -22,42 +28,43 @@ from typing import Any
 from flwr.agentapp import AgentApp, AgentSession
 from flwr.app import Context
 
-from trialgrid.guard import (
-    Aggregate,
-    DEFAULT_MIN_CELL,
-    SUPPRESSED,
-    EgressViolation,
-    combine,
+from trialgrid.eligibility import Criterion
+from trialgrid.guard import Aggregate, DEFAULT_MIN_CELL, SUPPRESSED, combine
+from trialgrid.pipeline import (
+    Trace,
+    challenge,
+    draft_criteria,
+    run_gate,
+    sanitize,
 )
-from trialgrid.prompts import GATE_REPORT, ROUTER, disclosure_instructions
-from trialgrid.sites import CRITERIA, PROTOCOL_ID, all_site_ids, run_site
+from trialgrid.prompts import (
+    CHALLENGER,
+    DRAFTER,
+    GATE_REPORT,
+    SANITIZER,
+    disclosure_instructions,
+)
+from trialgrid.provenance import check_disclosure_text
+from trialgrid.sites import all_site_ids, run_site
+from trialgrid.sources import fixture_sources
 
-#: Protocols this deployment is allowed to run. The model may choose from this
-#: list; it may not invent an entry. A choice outside it is a refusal, not a
-#: best-effort match.
-PROTOCOL_ALLOWLIST = (PROTOCOL_ID,)
-
-#: The only shape of answer this system will produce. A request for anything
-#: else is refused here, before a site is asked. This check is what makes the
-#: model's compliance with an injected instruction harmless: it can agree to
-#: list patients, and the request still dies on this line.
-QUERY_SHAPE_ALLOWLIST = ("counts",)
+APPROVAL_PREFIX = "APPROVE"
 
 app = AgentApp()
 
+
+# ---------------------------------------------------------------------------
+# Run-series state
+# ---------------------------------------------------------------------------
+
+
 def snapshot_items(context: Context) -> list[str]:
-    """Copy the run series' stored conversation items."""
     record = context.state.config_records.get("items")
     return list(record.get("json", ())) if record is not None else []
 
 
 def restore_items(context: Context, items: list[str]) -> None:
-    """Put the run series' stored items back exactly as they were.
-
-    Used around the routing call so its raw JSON output never becomes part of
-    the visible conversation. A judge should see the site table and the
-    decisions, not the machinery that produced them.
-    """
+    """Keep internal reasoning out of the visible conversation."""
     record = context.state.config_records.get("items")
     if record is not None:
         record["json"] = items
@@ -65,30 +72,15 @@ def restore_items(context: Context, items: list[str]) -> None:
         del context.state.config_records["items"]
 
 
-#: A human approves by typing this, because browser chat cannot pass run-config.
-#: Deliberately an explicit word plus the exact token: it cannot be produced by
-#: accident, and the token still binds the approval to the numbers that were
-#: actually shown.
-APPROVAL_PREFIX = "APPROVE"
-
-
 def read_approval(text: str) -> str:
-    """Return the token a human typed, or empty string if this is not an approval."""
     stripped = text.strip()
     if not stripped.upper().startswith(APPROVAL_PREFIX):
         return ""
-    return stripped[len(APPROVAL_PREFIX):].strip().strip(":").strip()
+    return stripped[len(APPROVAL_PREFIX) :].strip().strip(":").strip()
 
 
 def earlier_question(context: Context) -> str:
-    """The last real question in this conversation, skipping approvals.
-
-    Needed because an approval message replaces the question in `agent.input`,
-    but the run still has to know what was being asked.
-    """
-    items_record = context.state.config_records.get("items")
-    items = items_record.get("json", []) if items_record is not None else []
-    for item_json in reversed(list(items)):
+    for item_json in reversed(snapshot_items(context)):
         try:
             item = json.loads(item_json)
         except (TypeError, json.JSONDecodeError):
@@ -97,48 +89,45 @@ def earlier_question(context: Context) -> str:
             continue
         content = item.get("content")
         if isinstance(content, list):
-            content = "".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
+            content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
         if isinstance(content, str) and content.strip() and not read_approval(content):
             return content.strip()
     return ""
 
 
+# ---------------------------------------------------------------------------
+# Rendering
+# ---------------------------------------------------------------------------
 
-def approval_token(aggregate: Aggregate) -> str:
-    """A token derived from the exact numbers a human is approving.
 
-    Deriving it from the aggregate rather than issuing a random nonce means an
-    approval cannot be replayed against a different result. If the cohort
-    changes, a site stops abstaining, or the threshold moves, the token changes
-    and the previous approval no longer opens the gate.
+def approval_token(aggregate: Aggregate, criteria: list[Criterion]) -> str:
+    """Bound to the numbers AND the criteria that produced them.
+
+    If the criteria change — because a poisoned source widened them — the token
+    changes, so an approval given for one protocol cannot release another.
     """
     material = json.dumps(
         {
-            "sites_asked": aggregate.sites_asked,
+            "criteria": sorted(f"{c.ref}:{c.attribute}:{c.operator}:{c.value}" for c in criteria),
             "sites_answered": aggregate.sites_answered,
             "abstained": list(aggregate.abstained),
             "eligible": aggregate.eligible,
             "needs_screening": aggregate.needs_screening,
             "not_eligible": aggregate.not_eligible,
             "gaps": {k: str(v) for k, v in aggregate.gaps.items()},
-            "min_cell": aggregate.min_cell,
         },
         sort_keys=True,
     )
     return hashlib.sha256(material.encode()).hexdigest()[:8]
 
 
-def render(aggregate: Aggregate) -> str:
-    """The trace a judge reads from three metres away."""
+def render_counts(aggregate: Aggregate) -> str:
     lines = [
         "",
-        f"  PROTOCOL   {PROTOCOL_ID}   ({len(CRITERIA)} criteria)",
         f"  SITES      {aggregate.sites_answered} of {aggregate.sites_asked} answered",
     ]
     for site in aggregate.abstained:
-        lines.append(f"             ABSTAINED: {site}  -> counted as unknown, NOT as zero")
+        lines.append(f"             ABSTAINED: {site}  -> unknown, NOT zero")
     lines += [
         "",
         f"  ELIGIBLE          {aggregate.eligible}",
@@ -149,12 +138,15 @@ def render(aggregate: Aggregate) -> str:
     ]
     for attribute, count in aggregate.gaps.items():
         if count == SUPPRESSED:
-            lines.append(
-                f"    {attribute:28} {SUPPRESSED}  (n < {aggregate.min_cell}, withheld)"
-            )
+            lines.append(f"    {attribute:28} {SUPPRESSED}  (n < {aggregate.min_cell})")
         else:
             lines.append(f"    {attribute:28} {count} patients")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 
 @app.main()
@@ -165,87 +157,123 @@ def main(agent: AgentSession, context: Context) -> None:
 
     model = context.run_config.get("model.id")
     if not isinstance(model, str) or not model.strip():
-        raise ValueError("model.id must be set (see .env.example for endpoints)")
+        raise ValueError("model.id must be set")
 
+    safety_enabled = bool(context.run_config.get("safety.enabled", True))
     min_cell = int(context.run_config.get("policy.min-cell", DEFAULT_MIN_CELL))
     require_approval = bool(context.run_config.get("policy.require-approval", True))
     supplied_token = str(context.run_config.get("policy.approval-token", "") or "")
+    abstaining = str(context.run_config.get("policy.abstaining-site", "west-suffolk") or "")
+    include_poisoned = bool(context.run_config.get("sources.include-poisoned", True))
 
-    # A human may also approve by typing "APPROVE <token>" into chat.
     typed = read_approval(question)
     if typed:
         supplied_token = typed
         question = earlier_question(context) or question
-    abstaining = str(context.run_config.get("policy.abstaining-site", "west-suffolk") or "")
-    # Panic button. Skips every model call and completes in under two seconds.
-    # If an endpoint is overloaded at 17:29, the demo still runs -- and what it
-    # shows is the deterministic core, which is the part that matters anyway.
-    narrate = bool(context.run_config.get("policy.narrate", True))
 
-    # --- Model call 1 of 2: route the question, declare the answer shape -----
-    if narrate:
+    def call(instructions: str, content: str) -> str:
+        """One bounded model call whose output never enters the transcript."""
         before = snapshot_items(context)
-        routed = _route(agent, model, question)
-        restore_items(context, before)  # the routing JSON stays out of the transcript
-    else:
-        routed = {"protocol_id": PROTOCOL_ID, "query_shape": "counts", "restatement": question}
+        try:
+            response = agent.responses.create(
+                {
+                    "model": model,
+                    "input": [{"type": "message", "role": "user", "content": content}],
+                    "instructions": instructions,
+                    "stream": False,
+                    "max_output_tokens": 2000,
+                }
+            )
+        finally:
+            restore_items(context, before)
+        text = ""
+        for item in response.get("output", []):
+            if isinstance(item, dict) and item.get("type") == "message":
+                body = item.get("content")
+                if isinstance(body, str):
+                    text += body
+                elif isinstance(body, list):
+                    for part in body:
+                        if isinstance(part, dict) and isinstance(part.get("text"), str):
+                            text += part["text"]
+        return text
 
-    shape = routed.get("query_shape")
-    if shape not in QUERY_SHAPE_ALLOWLIST:
-        # The model may well have agreed to do this. It does not matter. The
-        # request is refused here, before any site is contacted, and the refusal
-        # is deterministic -- there is nothing to talk out of it.
-        print(
-            f"\n  GUARD - query shape {shape!r} is not in {list(QUERY_SHAPE_ALLOWLIST)}"
-            f" -> REFUSED\n  No site was contacted. No data was read.\n"
-        )
-        raise EgressViolation(
-            f"query shape {shape!r} is not permitted; this system emits aggregate counts only"
-        )
+    trace = Trace()
+    trace.add("")
+    trace.add(f"  SAFETY      {'ENABLED' if safety_enabled else '*** DISABLED ***'}")
 
-    chosen = routed.get("protocol_id")
-    if chosen not in PROTOCOL_ALLOWLIST:
-        raise ValueError(
-            f"model selected protocol {chosen!r}, which is not on the allowlist "
-            f"{list(PROTOCOL_ALLOWLIST)}"
-        )
+    # --- web side: retrieve, sanitize, draft ------------------------------
+    sources = fixture_sources(include_poisoned=include_poisoned)
+    trace.add(f"  RETRIEVED   {len(sources)} sources")
 
-    # --- Deterministic middle: sites answer locally, the guard pools ---------
+    cards = sanitize(sources, call, SANITIZER, safety_enabled=safety_enabled, trace=trace)
+    trace.add(f"  SANITIZED   {len(cards)} evidence cards")
+
+    criteria, refs = draft_criteria(cards, call, DRAFTER)
+    trace.add(f"  DRAFTED     {len(criteria)} criteria")
+
+    criteria, gate_result = run_gate(
+        cards, sources, refs, criteria, safety_enabled=safety_enabled, trace=trace
+    )
+
+    if safety_enabled and not criteria:
+        print(str(trace))
+        print("\n  BLOCKED - no criterion survived verification. Nothing was asked of any site.\n")
+        return
+
+    trace.add("")
+    trace.add("  CRITERIA IN FORCE")
+    for c in criteria:
+        trace.add(f"    {c.ref:4} {c.kind.value:10} {c.attribute} {c.operator} {c.value}")
+
+    # --- hospital side: sites evaluate locally, guard pools ---------------
     site_ids = all_site_ids()
-    returns = [run_site(s, abstain=(s == abstaining)) for s in site_ids]
+    returns = [run_site(s, criteria=criteria, abstain=(s == abstaining)) for s in site_ids]
     aggregate = combine(returns, sites_asked=len(site_ids), min_cell=min_cell)
 
-    print(render(aggregate))
+    print(str(trace))
+    print(render_counts(aggregate))
 
-    # --- The human supervision gate -----------------------------------------
-    token = approval_token(aggregate)
+    # --- the human gate ---------------------------------------------------
+    token = approval_token(aggregate, criteria)
     if require_approval and supplied_token != token:
         print(f"\n  BLOCKED - AWAITING SPONSOR SIGN-OFF   token {token}")
         print(f"  Approve by replying:  APPROVE {token}\n")
-        if narrate:
-            agent.responses.create(
-                {
-                    "model": model,
-                    "input": [
-                        {
-                            "type": "message",
-                            "role": "user",
-                            "content": (
-                                f"Aggregate:\n{render(aggregate)}\n\n"
-                                f"Approval token: {token}"
-                            ),
-                        }
-                    ],
-                    "instructions": GATE_REPORT,
-                    "stream": True,
-                }
-            )
+        agent.responses.create(
+            {
+                "model": model,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": (
+                            f"{trace}\n{render_counts(aggregate)}\n\nApproval token: {token}"
+                        ),
+                    }
+                ],
+                "instructions": GATE_REPORT,
+                "stream": True,
+            }
+        )
         return
 
-    # --- Model call 2 of 2: phrase the approved answer, from counts only -----
-    if not narrate:
-        print("\n  APPROVED - released (narration skipped)\n")
-        return
+    # --- challenge, then disclose ----------------------------------------
+    counts = render_counts(aggregate)
+    verdict = challenge(counts, counts, call, CHALLENGER)
+    strikes = [s for s in verdict.get("strikes", []) if isinstance(s, str)]
+    if strikes:
+        print(f"\n  CHALLENGER  struck {len(strikes)} claim(s)")
+        for s in strikes:
+            print(f"    - {s}")
+
+    disclosure = disclosure_instructions(
+        is_partial=aggregate.is_partial,
+        has_suppressed=bool(aggregate.suppressed_gaps),
+    )
+    if strikes:
+        disclosure += "\n\nThe Challenger struck these claims. Do not restate them:\n" + "\n".join(
+            f"- {s}" for s in strikes
+        )
 
     agent.responses.create(
         {
@@ -254,61 +282,10 @@ def main(agent: AgentSession, context: Context) -> None:
                 {
                     "type": "message",
                     "role": "user",
-                    "content": (
-                        f"Sponsor's question: {question}\n\n"
-                        f"Approved aggregate (counts only):\n{render(aggregate)}"
-                    ),
+                    "content": f"Sponsor's question: {question}\n\nApproved counts:\n{counts}",
                 }
             ],
-            "instructions": disclosure_instructions(
-                is_partial=aggregate.is_partial,
-                has_suppressed=bool(aggregate.suppressed_gaps),
-            ),
+            "instructions": disclosure,
             "stream": True,
         }
     )
-
-
-def _route(agent: AgentSession, model: str, question: str) -> dict[str, Any]:
-    """Ask the model to route the question. Its answer is checked, not trusted."""
-    response = agent.responses.create(
-        {
-            "model": model,
-            "input": [
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": (
-                        f"Sponsor's question:\n{question}\n\n"
-                        f"Protocols this deployment may run: {list(PROTOCOL_ALLOWLIST)}"
-                    ),
-                }
-            ],
-            "instructions": ROUTER,
-            "stream": False,
-            "max_output_tokens": 300,
-        }
-    )
-    return _parse_json(response)
-
-
-def _parse_json(response: dict[str, Any]) -> dict[str, Any]:
-    """Pull the model's JSON reply out of a Responses object."""
-    text = ""
-    for item in response.get("output", []):
-        if isinstance(item, dict) and item.get("type") == "message":
-            content = item.get("content")
-            if isinstance(content, str):
-                text += content
-            elif isinstance(content, list):
-                for part in content:
-                    if isinstance(part, dict) and isinstance(part.get("text"), str):
-                        text += part["text"]
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1].removeprefix("json").strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}

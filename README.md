@@ -8,28 +8,46 @@ Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (
 
 ## The problem
 
-A sponsor wants to know whether a trial protocol can actually recruit. Today that is months of emails to twenty hospitals, each hand-counting patients against sixty criteria. No hospital will share records to answer it, so the question gets answered slowly, partially, or not at all — and protocols that could never have recruited open anyway, then fail.
+Sites spent **$170M in 2024** completing feasibility assessments for FDA-regulated
+industry trials. The average assessment takes **29.4 days**. **70–80% of trials** hit
+delays or enrollment shortfalls.
+
+Federated feasibility already exists — [TriNetX](https://trinetx.com/data/) runs it across
+300M+ patients, and [DataSHIELD](https://datashield.org/about/) has done federated
+disclosure control for years. **This project is not claiming to have invented that.**
+
+What those systems answer is *who matches*. But there is a documented **65% gap between
+the structured data recorded for care and the data needed to assess eligibility**, and in
+practice *"subjects with incomplete eligibility data are almost always excluded from
+analysis"* — a known source of selection bias.
+
+So the patients who fail nothing, and are simply missing one fact, get dropped. This
+answers a different question: **who is one fact away, and which fact is it.**
 
 ## The answer this gives
 
 Not "47 eligible". That is the easy number and everyone already has it. This reports the population everybody else discards:
 
 ```
-  SITES      2 of 3 answered
-             ABSTAINED: west-suffolk  -> counted as unknown, NOT as zero
+  QUARANTINE  C6 from S4  -> injected_instruction
+  QUARANTINE  C7 from S4  -> injected_instruction, disclosure_request
 
-  ELIGIBLE          7
-  NEEDS SCREENING   11   <- fails nothing, one fact away
-  NOT ELIGIBLE      32
+  SITES      2 of 3 answered
+             ABSTAINED: west-suffolk  -> unknown, NOT zero
+
+  ELIGIBLE          8
+  NEEDS SCREENING   12   <- fails nothing, one fact away
+  NOT ELIGIBLE      30
 
   WHAT IS MISSING
     egfr_uncommon_mutation       9 patients
-    ecog                         SUPPRESSED  (n < 5, withheld)
+    ecog                         SUPPRESSED  (n < 5)
 
-  BLOCKED - AWAITING SPONSOR SIGN-OFF   token c0ebf445
+  BLOCKED - AWAITING SPONSOR SIGN-OFF   token 6a112dcc
 ```
 
-Eleven patients fail nothing. Nine of them are waiting on the same test — which is **one message to one lab**, not nine separate acts of remembering.
+Twelve patients fail nothing. Nine are waiting on the same test — **one message to one lab**,
+not nine separate acts of remembering.
 
 ## The thesis
 
@@ -41,28 +59,78 @@ Imputing zero for a silent site understates a network in the one direction that 
 
 ---
 
+## Two trust boundaries, one pipeline
+
+Criteria are not born structured. Somebody reads them off a registry page — untrusted
+content from the open web. Patients live in hospitals — private data that must not move.
+Those are different problems, and the architecture keeps them apart:
+
+```
+  WEB (untrusted)                            HOSPITALS (private)
+
+  Retriever ─▶ Sanitizer ─▶ Drafter          site agent   site agent   site agent
+  reads the    strips out   writes the       own log      own log      own log
+  web only     injected     criteria         rules only   rules only   rules only
+               instructions                  no model     no model     no model
+       │                        │                 │            │            │
+       │                        ▼                 └──── counts only ────────┘
+       │              ┌──────────────────┐                     │
+       └─ never sees ─┤   GATEKEEPER     ├── criteria ─────────┘
+          a patient   │  ordinary Python │                     │
+                      └──────────────────┘              Challenger
+                                                              │
+                                                     human sign-off
+```
+
+The agents that touch the web are never shown a patient. The agents that evaluate
+patients never touch the web, make no model call at all, and can emit nothing but counts.
+
 ## Where safety actually lives
 
-Every agent in this system is deliberately weak. The controls are deterministic Python and there is no prompt that can talk past them.
+Every agent here is deliberately weak. The controls are deterministic and there is no
+prompt that talks past them.
 
 | Boundary | What it does | Why it holds |
 |---|---|---|
 | **Site agents make no model call** | They run rules over their own log | A site with no model cannot be prompt-injected |
-| **Query-shape allowlist** | Only `counts` is producible | The model may *agree* to list patients; the request still dies here |
-| **Egress guard** | Refuses payloads, never sanitises them | A field that shouldn't exist is an error, not something to strip |
-| **Small-cell suppression** | `n < 5` withheld, **not rounded** | Rounding still reveals that a small stratum exists |
-| **Approval token** | Derived from the exact numbers | An approval cannot be replayed against a different result |
+| **Quote verification** | Every cited quote must *occur* in the source | No phrasing makes a substring appear in a document it isn't in |
+| **Source allowlist** | Only approved domains can support a criterion | Enforced in code, not requested in a prompt |
+| **Quarantine** | Hostile pages are reported, not obeyed — and not deleted | A human must be able to see the attack |
+| **Egress guard** | Refuses payloads rather than sanitising them | A field that shouldn't exist is an error |
+| **Small-cell suppression** | `n < 5` withheld, **not rounded** | Rounding still reveals a small stratum exists |
+| **Approval token** | Bound to the counts *and* the criteria | Approving a strict protocol doesn't release a loosened one |
 
-`trialgrid/prompts.py` holds every instruction any model is given, in one file, so it can be audited in one read. That file opens by stating that **none of those prompts is a safety control**. If all of them were replaced with empty strings, no patient record would still cross the wire.
+`trialgrid/prompts.py` holds every instruction any model is given, in one file, and opens
+by stating that **none of them is a safety control**. Replace all of them with empty
+strings and no patient record still crosses the wire.
 
-That is the difference between a demo where a model *refuses* and this one. A judge who distrusts LLMs should find this design *more* convincing, not less.
+## The demonstration
+
+```bash
+uv run python -m trialgrid.demo
+```
+
+The same question, asked twice, over the same four sources — one of which is a hostile
+"protocol clarification notice" carrying an instruction addressed to whatever is reading it.
+
+```
+  ECOG criterion, guarded    : less_than_or_equal 1
+  ECOG criterion, unguarded  : less_than_or_equal 4   <- rewritten by the hostile page
+
+  Recruitable (needs screening), guarded   : 12
+  Recruitable (needs screening), unguarded : 16
+```
+
+Nobody is told a lie. The protocol is simply loosened, the feasibility answer inflates by
+37%, and a sponsor opens sites that cannot deliver. The second run is not a strawman — it
+is the identical code path with two checks disabled.
 
 ## Run it
 
 ```bash
 uv sync --extra dev
-uv run pytest                    # 16 tests, each named for a promise above
-uv run python -m trialgrid.demo  # deterministic core, no network, ~0.003s
+uv run pytest                    # 32 tests, each named for a promise above
+uv run python -m trialgrid.demo  # the A/B contrast, no network, ~0.004s
 ```
 
 On a local SuperLink with a Track 2 endpoint:
@@ -81,29 +149,24 @@ uv run flwr run . local-agent --run-config 'model.id="/models/Qwen3.5-397B-A17B-
 Release a blocked result by supplying its token:
 
 ```bash
-uv run flwr run . local-agent --run-config 'policy.approval-token="c0ebf445"' --stream
+uv run flwr run . local-agent --run-config 'policy.approval-token="6a112dcc"' --stream
 ```
 
-`policy.narrate=false` skips every model call and completes in under two seconds — the panic button for a flaky endpoint.
+Run the unguarded version to see what the safeguards prevent:
 
-## Architecture
-
-```
-   site agent        site agent        site agent
-   own log           own log           own log
-   rules only        rules only        rules only
-   no model          no model          no model
-        |                 |                 |
-        +----- egress guard: counts only ---+
-                          |
-                   coordinator agent   (never sees a row)
-                          |
-                   human sign-off      (token bound to the numbers)
-                          |
-                   feasibility answer
+```bash
+uv run flwr run . local-agent --run-config 'safety.enabled=false' --stream
 ```
 
-Two model calls in the whole pipeline — one to route the question, one to phrase an approved answer. Everything that decides anything sits between them and is deterministic. That is a safety property first; it also keeps the run inside SuperGrid's five-minute task timeout, because the cost does not grow with the number of sites.
+`python -m trialgrid.demo` is the panic button: no network, no model, no Flower runtime,
+and it still shows the entire argument.
+
+## Model budget
+
+Four bounded model calls: sanitize, draft, challenge, disclose. Every stage that *decides*
+anything sits between them and is deterministic. That is a safety property first, and it
+also keeps a run inside SuperGrid's five-minute task timeout, since cost does not grow
+with the number of sites.
 
 ---
 
@@ -114,6 +177,8 @@ Two model calls in the whole pipeline — one to route the question, one to phra
 - **We have measured no accuracy.** No benchmark, no percentage, no time saving. The rules are deterministic — the same input gives the same answer, and every answer names the fact it used. That is the claim, and it is the whole claim.
 - **This is not anonymity.** Sites hold their own patient codes. Not sending identifiers is a real reduction in exposure; it is not the same as anonymising, and a compliance officer would rightly catch us saying otherwise.
 - **This is not federated learning.** No model is trained. A Flower App Bundle holds either one `agentapp` or a `serverapp`+`clientapp`, never both.
+- **The sites run in one process today.** Their isolation is architectural — no shared state, no model call, counts-only egress — but they are not yet on separate machines. Saying otherwise would be a lie about the threat model.
+- **The demo's model is scripted.** `trialgrid/offline.py` returns fixed, role-appropriate JSON so the A/B contrast is reproducible rather than dependent on a language model having a good day. Against a live model the Sanitizer may catch more or less; the Gatekeeper's checks are unaffected either way, because they are code.
 - **This is not a medical device.** It is feasibility decision support for research staff. It does not diagnose, does not recommend treatment, and makes no enrolment decision.
 
 ## Relationship to Mizan

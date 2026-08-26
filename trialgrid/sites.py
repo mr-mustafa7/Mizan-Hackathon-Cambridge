@@ -77,7 +77,9 @@ def cohort(site_id: str) -> list[Patient]:
     return patients
 
 
-def run_site(site_id: str, *, abstain: bool = False) -> SiteReturn:
+def run_site(
+    site_id: str, *, criteria: list[Criterion] | None = None, abstain: bool = False
+) -> SiteReturn:
     """Evaluate one site's cohort locally and emit only what the wire carries.
 
     A site that abstains returns a marked abstention, never a zero. The
@@ -90,7 +92,7 @@ def run_site(site_id: str, *, abstain: bool = False) -> SiteReturn:
             note="data controller declined: no approval in place for this protocol",
         )
 
-    assessments = assess_all(cohort(site_id), CRITERIA)
+    assessments = assess_all(cohort(site_id), criteria if criteria is not None else CRITERIA)
 
     gaps: dict[str, int] = {}
     for a in assessments:
