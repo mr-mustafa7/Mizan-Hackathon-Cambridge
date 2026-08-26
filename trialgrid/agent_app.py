@@ -45,6 +45,26 @@ QUERY_SHAPE_ALLOWLIST = ("counts",)
 
 app = AgentApp()
 
+def snapshot_items(context: Context) -> list[str]:
+    """Copy the run series' stored conversation items."""
+    record = context.state.config_records.get("items")
+    return list(record.get("json", ())) if record is not None else []
+
+
+def restore_items(context: Context, items: list[str]) -> None:
+    """Put the run series' stored items back exactly as they were.
+
+    Used around the routing call so its raw JSON output never becomes part of
+    the visible conversation. A judge should see the site table and the
+    decisions, not the machinery that produced them.
+    """
+    record = context.state.config_records.get("items")
+    if record is not None:
+        record["json"] = items
+    elif "items" in context.state.config_records:
+        del context.state.config_records["items"]
+
+
 #: A human approves by typing this, because browser chat cannot pass run-config.
 #: Deliberately an explicit word plus the exact token: it cannot be produced by
 #: accident, and the token still binds the approval to the numbers that were
@@ -164,7 +184,9 @@ def main(agent: AgentSession, context: Context) -> None:
 
     # --- Model call 1 of 2: route the question, declare the answer shape -----
     if narrate:
+        before = snapshot_items(context)
         routed = _route(agent, model, question)
+        restore_items(context, before)  # the routing JSON stays out of the transcript
     else:
         routed = {"protocol_id": PROTOCOL_ID, "query_shape": "counts", "restatement": question}
 

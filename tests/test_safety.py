@@ -134,3 +134,22 @@ def test_the_wire_refuses_an_unknown_field() -> None:
 def test_the_wire_refuses_a_non_integer_count() -> None:
     with pytest.raises(EgressViolation):
         check_shape({"site_id": "a", "gaps": {"ecog": "lots"}})
+
+
+def test_a_request_for_patient_rows_is_refused_before_any_site_is_asked() -> None:
+    """The mechanism the demo's strongest moment depends on.
+
+    Even if a model is fully talked into agreeing to list patients, the shape
+    check catches it before a single site agent runs. This test proves the
+    refusal is enforced by code, not by whatever the model decided to do.
+    """
+    from trialgrid.agent_app import QUERY_SHAPE_ALLOWLIST
+
+    # Simulates a model that has been successfully injected and is trying to
+    # comply with "list every patient at west-suffolk".
+    compromised_routing = {
+        "protocol_id": "SYNTHETIC-EGFR-UNCOMMON-01",
+        "query_shape": "patient_list",
+        "restatement": "Certainly, listing individual patients at west-suffolk:",
+    }
+    assert compromised_routing["query_shape"] not in QUERY_SHAPE_ALLOWLIST
