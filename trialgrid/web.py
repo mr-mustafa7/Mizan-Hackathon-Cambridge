@@ -241,9 +241,10 @@ async function drawImpact(){
   const worst=rows.slice().sort((a,b)=>b.unanswered-a.unanswered)[0];
   $('#t-impact').innerHTML=`
     <div class="q" style="border-left-color:var(--warn)">
-      <b>76% of trials need a protocol amendment</b> — 3.3 on average, at $141k–$535k each,
-      taking 260 days. 16% of them change eligibility criteria, and 23% are avoidable.
-      This is the analysis that prevents one.
+      <b>76% of protocols now carry a substantial amendment</b> — up from 57% in 2015,
+      mean 3.5 per protocol. Median direct cost: <b>$141k in Phase II, $535k in Phase III</b>.
+      Eligibility criteria are among the things they change. This is the analysis that
+      asks the question early enough to avoid one.
     </div>
     <table><thead><tr><th>Criterion</th><th class="num">Rules out</th>
       <th class="num">Unanswered</th><th class="num">Total cost</th>
@@ -266,12 +267,13 @@ async function drawImpact(){
       That is not a protocol problem — it is an untested-samples problem, and it is
       <b>one lab order</b>, not ${worst.unanswered} separate acts of remembering.</div>`:''}
     <div class="cite"><b>Sources.</b>
-      Amendment prevalence, count and cost: Precision for Medicine, 2024 · Applied Clinical Trials.
-      Eligibility criteria as amendment driver and avoidability: same.
-      Relaxed laboratory thresholds and adverse-event withdrawals: ESMO Open, 2025.
+      Amendment prevalence, mean count and median cost: Tufts CSDD, <i>New Benchmarks on
+      Protocol Amendment Practices</i>, Ther Innov Regul Sci 2024.
+      Relaxed laboratory thresholds showing no increase in adverse-event withdrawals, and
+      screen-failure rates of 21–26%: ESMO Open, 2025.
       47.5% of patients alive at 6 months deemed ineligible: <i>Evaluating eligibility criteria
-      of oncology trials using real-world data and AI</i>.
-      Screen-failure rates 21–26%: ESMO Open, 2025.</div>`;
+      of oncology trials using real-world data and AI</i>, 2022.
+      Every figure, including those removed as unverifiable, is listed in SOURCES.md.</div>`;
 }
 
 document.querySelectorAll('.tab').forEach(t=>t.onclick=async()=>{

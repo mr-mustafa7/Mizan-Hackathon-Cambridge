@@ -8,9 +8,12 @@ Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (
 
 ## The problem
 
-Sites spent **$170M in 2024** completing feasibility assessments for FDA-regulated
-industry trials. The average assessment takes **29.4 days**. **70–80% of trials** hit
-delays or enrollment shortfalls.
+Investigative sites spent **$170M in 2024** completing feasibility assessments and site
+qualification visits for FDA-regulated industry trials — **2,500 hours per site per year**,
+a median of roughly **$7,500** each. (Tufts CSDD, fielded April–July 2024.)
+
+Every figure in this README is listed with its source in [SOURCES.md](SOURCES.md), including
+the ones that were removed because they could not be verified.
 
 Federated feasibility already exists — [TriNetX](https://trinetx.com/data/) runs it across
 300M+ patients, and [DataSHIELD](https://datashield.org/about/) has done federated
@@ -104,6 +107,45 @@ prompt that talks past them.
 by stating that **none of them is a safety control**. Replace all of them with empty
 strings and no patient record still crosses the wire.
 
+### What each control actually defends against — and what it doesn't
+
+These are different threats and it is worth not blurring them.
+
+**Site determinism stops exfiltration, not bad criteria.** A site agent with no model cannot
+be talked into leaking a record. But it faithfully executes whatever criteria it is handed —
+so if the criteria are corrupted upstream, it computes a wrong answer perfectly. The
+hospital-side guarantee is about *what leaves*, not about *what is asked*.
+
+**The Sanitizer is not load-bearing, and should not be trusted as if it were.** It is an LLM
+making a judgment call, and the attack in the demo is the crude version — it literally says
+"ignore all prior instructions". A competent attacker writes a plausible amendment that
+quietly moves a threshold, with no imperative sentence to notice.
+
+`tests/test_redteam.py` assumes the Sanitizer **fails completely** — every hostile card
+arrives unflagged — and asks what is left:
+
+| Attack | Stopped by | Result |
+|---|---|---|
+| Subtle threshold shift, non-allowlisted domain | source allowlist | **blocked** |
+| Fabricated supporting quote | quote verification | **blocked** |
+| Subtle threshold shift on an **allowlisted** domain | — | **passes** |
+
+### The known gap, stated plainly
+
+If an attacker can place plausible text on an allowlisted domain — a compromised registry
+page, a spoofed amendment, or a real page that is simply wrong — every deterministic check
+passes *correctly*. Nothing is lying: the document really does say what it says. The
+loosened criterion is admitted.
+
+What remains is not a technical control. It is that the human is shown **the criteria in
+force** before approving, and the approval token is derived from those criteria, so a
+sponsor who approved `ecog <= 1` has not approved `ecog <= 2`. That is a real backstop and
+it is weaker than the checks above.
+
+**This system is not robust against source-level compromise, and we don't claim it is.**
+`test_KNOWN_GAP_a_subtle_attack_on_an_allowlisted_domain_passes` exists so the gap is in the
+test suite rather than only in a paragraph.
+
 ## The demonstration
 
 ```bash
@@ -178,8 +220,13 @@ The question a sponsor pays to answer is not "can this recruit" but **"which rul
 me patients, and is it safe to relax?"** — asked before the protocol is signed, because
 afterwards the fix is an amendment.
 
-**76% of trials need one**, averaging 3.3 at **$141k–$535k each**, taking 260 days. 16% change
-eligibility criteria; 23% are judged avoidable.
+**76% of protocols now carry at least one substantial amendment**, up from 57% in 2015, and
+the mean is **3.5**. The median direct cost of one is **$141k in Phase II and $535k in
+Phase III**. Eligibility criteria are among the things amendments change.
+
+*(Whether amendments are avoidable is genuinely contested — one analysis says 45% are, newer
+data says 77% are not. We don't quote a figure. Amendments being common and expensive is
+enough.)*
 
 ```
 CRITERION                  RULES OUT  UNANSWERED  COST   RELAX TO      GAIN
