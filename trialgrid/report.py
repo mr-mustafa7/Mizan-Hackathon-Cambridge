@@ -11,7 +11,10 @@ from __future__ import annotations
 from typing import Any
 
 from trialgrid.agent_app import approval_token
+from trialgrid.engines import engine_info
 from trialgrid.guard import SUPPRESSED, combine
+from trialgrid.impact import analyse
+from trialgrid.sites import cohort
 from trialgrid.offline import scripted_model
 from trialgrid.pipeline import Trace, draft_criteria, run_gate, sanitize
 from trialgrid.prompts import DRAFTER, SANITIZER
@@ -37,8 +40,118 @@ def run_structured(*, safety_enabled: bool, abstaining: str = "west-suffolk") ->
     aggregate = combine(returns, sites_asked=len(site_ids))
 
     admissible = set(gate_result.admissible)
+    flagged = [c for c in cards if c.quarantine_flags]
+
+    # The agent roster, described by what each one was actually handed. The
+    # capability columns are the point: they say what an agent CANNOT reach,
+    # which is the only claim that survives a compromised model.
+    agents = [
+        {
+            "name": "Retriever",
+            "role": "Fetches source documents",
+            "model_call": False,
+            "can": ["read the open web"],
+            "cannot": ["see a patient", "write a criterion", "decide anything"],
+            "received": "1 protocol question",
+            "produced": f"{len(sources)} documents ({sum(s['hostile'] for s in [{'hostile': x.source_id == POISONED_SOURCE.source_id} for x in sources])} hostile)",
+            "zone": "web",
+        },
+        {
+            "name": "Sanitizer",
+            "role": "Distils documents into evidence cards",
+            "model_call": True,
+            "can": ["read raw untrusted text", "flag hostile content"],
+            "cannot": ["see a patient", "act on an instruction it reads"],
+            "received": f"{len(sources)} raw documents",
+            "produced": f"{len(cards)} cards, {len(flagged)} quarantined",
+            "zone": "web",
+        },
+        {
+            "name": "Drafter",
+            "role": "Writes machine-checkable criteria",
+            "model_call": True,
+            "can": ["read evidence cards"],
+            "cannot": ["touch the internet", "see raw documents", "see a patient"],
+            "received": f"{len(cards)} cards",
+            "produced": f"{len(criteria)} criteria, each citing a card",
+            "zone": "web",
+        },
+        {
+            "name": "Gatekeeper",
+            "role": "Verifies provenance — plain Python, not a model",
+            "model_call": False,
+            "can": ["reject any criterion", "block the whole run"],
+            "cannot": ["be persuaded", "be prompted", "be overridden by a model"],
+            "received": f"{len(criteria)} criteria + {len(cards)} cards",
+            "produced": (
+                f"{len(kept)} admitted, {len(gate_result.violations)} violations"
+                + ("" if safety_enabled else " (IGNORED — safety off)")
+            ),
+            "zone": "gate",
+        },
+        *[
+            {
+                "name": f"Site · {r.site_id}",
+                "role": "Evaluates its own patients locally",
+                "model_call": False,
+                "can": ["read its own screening log", "emit counts"],
+                "cannot": ["touch the internet", "see another site", "emit a patient row"],
+                "received": f"{len(kept)} criteria",
+                "produced": (
+                    f"{r.screened} screened → counts only"
+                    if r.disposition.value == "ANSWERED"
+                    else "ABSTAINED → unknown, not zero"
+                ),
+                "zone": "hospital",
+            }
+            for r in returns
+        ],
+        {
+            "name": "Egress guard",
+            "role": "Suppresses small cells — plain Python",
+            "model_call": False,
+            "can": ["refuse a payload", "withhold a count"],
+            "cannot": ["be persuaded", "round instead of suppress"],
+            "received": f"{len(returns)} site returns",
+            "produced": (
+                f"{aggregate.sites_answered} of {aggregate.sites_asked} pooled, "
+                f"{len(aggregate.suppressed_gaps)} cells suppressed"
+            ),
+            "zone": "gate",
+        },
+        {
+            "name": "Human",
+            "role": "Signs off before anything is released",
+            "model_call": False,
+            "can": ["release", "refuse"],
+            "cannot": ["be skipped when safeguards are on"],
+            "received": "the full aggregate + token",
+            "produced": "BLOCKED — awaiting sign-off" if safety_enabled else "bypassed",
+            "zone": "human",
+        },
+    ]
+
+    pool = [p for sid in site_ids if sid != abstaining for p in cohort(sid)]
+    impacts = analyse(pool, kept) if kept else []
+    info = engine_info()
 
     return {
+        "engine": {"name": info.name, "detail": info.detail, "production": info.is_production},
+        "agents": agents,
+        "impact": [
+            {
+                "ref": i.ref,
+                "attribute": i.attribute,
+                "wording": i.wording,
+                "blocks": i.blocks,
+                "unanswered": i.unanswered,
+                "total_cost": i.total_cost,
+                "gain_if_removed": i.gain_if_removed,
+                "relaxed_to": i.relaxed_to,
+                "gain_if_relaxed": i.gain_if_relaxed,
+            }
+            for i in impacts
+        ],
         "safety_enabled": safety_enabled,
         "question": QUESTION,
         "sources": [

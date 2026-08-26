@@ -172,6 +172,40 @@ uv run flwr run . local-agent --run-config 'safety.enabled=false' --stream
 `python -m trialgrid.demo` is the panic button: no network, no model, no Flower runtime,
 and it still shows the entire argument.
 
+## What it tells a sponsor
+
+The question a sponsor pays to answer is not "can this recruit" but **"which rule is costing
+me patients, and is it safe to relax?"** — asked before the protocol is signed, because
+afterwards the fix is an amendment.
+
+**76% of trials need one**, averaging 3.3 at **$141k–$535k each**, taking 260 days. 16% change
+eligibility criteria; 23% are judged avoidable.
+
+```
+CRITERION                  RULES OUT  UNANSWERED  COST   RELAX TO      GAIN
+I2 · egfr_uncommon_mutation        6          19    25   —                —
+I3 · ecog                         12           6    18   <= 2            +7
+I1 · histology                     9           0     9   —                —
+```
+
+Two different findings, two different fixes. Relaxing ECOG one step reaches **7 more
+patients** — and trials with relaxed laboratory thresholds showed *no increase* in
+adverse-event withdrawals. The 19 unanswered EGFR results are not a protocol problem at all;
+they are **one lab order**.
+
+Computed entirely from counts by re-running cohorts with a criterion removed or loosened. No
+patient leaves a site.
+
+## The eligibility engine is swappable
+
+`trialgrid/engines.py` satisfies Mizan's `EvaluationEngine` Protocol — one method, `evaluate`.
+Mizan's production engine is used when importable; the in-repo reference engine runs when it
+is not. Tiers are decided from rule results, not by the engine that produced them, so both
+behave identically at the boundary.
+
+**No Mizan source is vendored here.** The seam is the point: the reasoning backend is an
+implementation detail, not the product.
+
 ## Model budget
 
 Four bounded model calls: sanitize, draft, challenge, disclose. Every stage that *decides*

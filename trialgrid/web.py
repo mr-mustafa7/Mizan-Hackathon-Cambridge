@@ -80,12 +80,50 @@ background:#010409;display:flex;justify-content:space-between;gap:10px}
 .punch{margin-top:20px;padding:18px;border-radius:8px;background:rgba(248,81,73,.08);
 border-left:3px solid var(--bad);font-size:17px;line-height:1.6}
 .hide{display:none}
+.tabs{display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+.tab{padding:12px 20px;cursor:pointer;color:var(--dim);font-weight:600;font-size:15px;
+border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+.zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.zone{border-radius:10px;padding:16px;border:1px solid var(--line)}
+.zone.web{background:rgba(210,153,34,.05);border-color:rgba(210,153,34,.3)}
+.zone.gate{background:rgba(88,166,255,.05);border-color:rgba(88,166,255,.3)}
+.zone.hospital{background:rgba(63,185,80,.05);border-color:rgba(63,185,80,.3)}
+.zone.human{background:rgba(163,113,247,.05);border-color:rgba(163,113,247,.4)}
+.zone>h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin-bottom:12px}
+.agent{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:10px}
+.agent .nm{font-weight:700;font-size:15px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.agent .rl{color:var(--dim);font-size:12.5px;margin:3px 0 10px}
+.caps{font-size:12px;line-height:1.7}
+.caps .y{color:var(--ok)}.caps .n{color:var(--bad)}
+.io{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;
+font-family:ui-monospace,Menlo,monospace;color:var(--dim)}
+.io b{color:var(--fg);font-weight:600}
+.pill{font-size:10px;padding:2px 7px;border-radius:20px;font-weight:700;letter-spacing:.5px}
+.p-model{background:rgba(210,153,34,.18);color:var(--warn)}
+.p-code{background:rgba(88,166,255,.18);color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);
+padding:10px 8px;border-bottom:1px solid var(--line)}
+td{padding:11px 8px;border-bottom:1px solid var(--line)}
+tr:last-child td{border:0}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.win{color:var(--ok);font-weight:700}
+.cite{margin-top:16px;padding:14px;background:#010409;border-radius:8px;font-size:12.5px;
+line-height:1.8;color:var(--dim)}
+.cite b{color:var(--fg)}
 .foot{margin-top:28px;color:var(--dim);font-size:13px;line-height:1.8}
 </style></head><body><div class="wrap">
 <h1>TrialGrid <span>— can this protocol recruit?</span></h1>
 <p class="sub">Three hospitals answer one feasibility question. No patient record leaves any of
 them. One of the four source documents is hostile.</p>
 <div class="q" id="q"></div>
+<div class="tabs">
+  <div class="tab active" data-t="run">Live run</div>
+  <div class="tab" data-t="agents">The agent team</div>
+  <div class="tab" data-t="impact">What it tells a sponsor</div>
+</div>
+<div id="t-run">
 <div class="controls">
   <button class="primary" id="run">▶ Run with safeguards</button>
   <button class="danger" id="runoff" disabled>Run again with safeguards OFF</button>
@@ -95,6 +133,9 @@ them. One of the four source documents is hostile.</p>
   <div id="left"></div><div id="right"></div>
 </div>
 <div id="diff"></div>
+</div>
+<div id="t-agents" class="hide"></div>
+<div id="t-impact" class="hide"></div>
 <div class="foot">
   Synthetic cohorts and a synthetic protocol — no patient data of any kind.
   Every number is computed by the same pipeline the agent runs.
@@ -163,6 +204,87 @@ $('#runoff').onclick=async()=>{
     answer inflated by ${pct}%, and a sponsor opens sites that cannot deliver.<br>
     <b>The unguarded run is the identical code path with two checks disabled.</b></div></div>`;
 };
+
+const ZONES={web:'Web zone — untrusted input',gate:'Deterministic controls',
+ hospital:'Hospital zone — private data',human:'Human oversight'};
+
+function agentCard(a){
+  return `<div class="agent"><div class="nm">${esc(a.name)}
+    <span class="pill ${a.model_call?'p-model':'p-code'}">${a.model_call?'model call':'code only'}</span></div>
+    <div class="rl">${esc(a.role)}</div>
+    <div class="caps">${a.can.map(c=>`<div class="y">✓ ${esc(c)}</div>`).join('')}
+    ${a.cannot.map(c=>`<div class="n">✕ ${esc(c)}</div>`).join('')}</div>
+    <div class="io">in &nbsp;<b>${esc(a.received)}</b><br>out <b>${esc(a.produced)}</b></div></div>`;
+}
+
+async function drawAgents(){
+  const d=await load(), ags=d.guarded.agents;
+  const byZone={};
+  ags.forEach(a=>{(byZone[a.zone]=byZone[a.zone]||[]).push(a)});
+  const models=ags.filter(a=>a.model_call).length;
+  $('#t-agents').innerHTML=`
+    <div class="q" style="border-left-color:var(--ok)">
+      <b>${ags.length} agents. Only ${models} of them ever call a model.</b>
+      Everything that decides anything is ordinary code — and every agent is defined
+      as much by what it <i>cannot</i> reach as by what it does.
+      Eligibility is evaluated by the <b>${esc(d.guarded.engine.name)}</b> engine
+      (${esc(d.guarded.engine.detail)}), reached through a one-method Protocol so the
+      reasoning backend is swappable and is not the product.
+    </div>
+    <div class="zones">${Object.entries(byZone).map(([z,list])=>
+      `<div class="zone ${z}"><h3>${ZONES[z]||z}</h3>${list.map(agentCard).join('')}</div>`).join('')}</div>`;
+}
+
+async function drawImpact(){
+  const d=await load(), rows=d.guarded.impact;
+  const best=rows.filter(r=>r.gain_if_relaxed>0).sort((a,b)=>b.gain_if_relaxed-a.gain_if_relaxed)[0];
+  const worst=rows.slice().sort((a,b)=>b.unanswered-a.unanswered)[0];
+  $('#t-impact').innerHTML=`
+    <div class="q" style="border-left-color:var(--warn)">
+      <b>76% of trials need a protocol amendment</b> — 3.3 on average, at $141k–$535k each,
+      taking 260 days. 16% of them change eligibility criteria, and 23% are avoidable.
+      This is the analysis that prevents one.
+    </div>
+    <table><thead><tr><th>Criterion</th><th class="num">Rules out</th>
+      <th class="num">Unanswered</th><th class="num">Total cost</th>
+      <th>One-step relaxation</th><th class="num">Would gain</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td><b>${r.ref}</b> · <span class="mono">${esc(r.attribute)}</span><br>
+        <span style="color:var(--dim);font-size:12px">${esc(r.wording)}</span></td>
+        <td class="num">${r.blocks}</td><td class="num">${r.unanswered}</td>
+        <td class="num" style="color:var(--warn)">${r.total_cost}</td>
+        <td class="mono">${r.relaxed_to?esc(r.relaxed_to):'—'}</td>
+        <td class="num ${r.gain_if_relaxed>0?'win':''}">${r.gain_if_relaxed>0?'+'+r.gain_if_relaxed:'—'}</td></tr>`).join('')}
+    </tbody></table>
+    ${best?`<div class="punch" style="background:rgba(63,185,80,.08);border-left-color:var(--ok)">
+      Relaxing <b>${esc(best.attribute)}</b> to <b>${esc(best.relaxed_to)}</b> would make
+      <b>${best.gain_if_relaxed} more patients</b> recruitable across the responding sites.
+      Trials using relaxed laboratory thresholds showed <b>no increase</b> in withdrawals for
+      adverse events compared with stringent ones — so this is a question worth asking before
+      the protocol is signed, not after.</div>`:''}
+    ${worst&&worst.unanswered>0?`<div class="punch" style="background:rgba(88,166,255,.08);border-left-color:var(--accent)">
+      <b>${worst.unanswered} patients</b> are unanswered on <b>${esc(worst.attribute)}</b>.
+      That is not a protocol problem — it is an untested-samples problem, and it is
+      <b>one lab order</b>, not ${worst.unanswered} separate acts of remembering.</div>`:''}
+    <div class="cite"><b>Sources.</b>
+      Amendment prevalence, count and cost: Precision for Medicine, 2024 · Applied Clinical Trials.
+      Eligibility criteria as amendment driver and avoidability: same.
+      Relaxed laboratory thresholds and adverse-event withdrawals: ESMO Open, 2025.
+      47.5% of patients alive at 6 months deemed ineligible: <i>Evaluating eligibility criteria
+      of oncology trials using real-world data and AI</i>.
+      Screen-failure rates 21–26%: ESMO Open, 2025.</div>`;
+}
+
+document.querySelectorAll('.tab').forEach(t=>t.onclick=async()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  const w=t.dataset.t;
+  $('#t-run').classList.toggle('hide',w!=='run');
+  $('#t-agents').classList.toggle('hide',w!=='agents');
+  $('#t-impact').classList.toggle('hide',w!=='impact');
+  if(w==='agents'&&!$('#t-agents').innerHTML) await drawAgents();
+  if(w==='impact'&&!$('#t-impact').innerHTML) await drawImpact();
+});
+
 $('#reset').onclick=()=>{$('#left').innerHTML='';$('#right').innerHTML='';$('#diff').innerHTML='';
   $('#run').disabled=false;$('#runoff').disabled=true;};
 </script></body></html>"""
