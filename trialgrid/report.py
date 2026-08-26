@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from trialgrid.agent_app import approval_token
-from trialgrid.engines import engine_info
+from trialgrid.engines import engine_info, trace_one_patient
 from trialgrid.guard import SUPPRESSED, combine
 from trialgrid.impact import analyse
 from trialgrid.sites import cohort
@@ -135,8 +135,34 @@ def run_structured(*, safety_enabled: bool, abstaining: str = "west-suffolk") ->
     impacts = analyse(pool, kept) if kept else []
     info = engine_info()
 
+    # One real patient, walked criterion by criterion, so the engine's own
+    # reasoning is inspectable rather than a tier hiding a black box.
+    # Prefer the patient the whole thesis is about: nothing disqualifies them,
+    # but one fact was never recorded, so they sit at NEEDS_SCREENING rather
+    # than being silently dropped.
+    demo_patient = None
+    if pool and kept:
+        for p in pool:
+            if (
+                "egfr_uncommon_mutation" not in p.facts
+                and p.facts.get("histology") == "adenocarcinoma"
+                and p.facts.get("active_infection") == "no"
+                and p.facts.get("prior_egfr_tki") == "no"
+                and p.facts.get("ecog") in ("0", "1")
+                and p.facts.get("measurable_disease") == "yes"
+            ):
+                demo_patient = p
+                break
+        if demo_patient is None:
+            demo_patient = pool[0]
+    patient_trace = (
+        {"code": demo_patient.code, "facts": demo_patient.facts, "rows": trace_one_patient(demo_patient, kept)}
+        if demo_patient else None
+    )
+
     return {
         "engine": {"name": info.name, "detail": info.detail, "production": info.is_production},
+        "patient_trace": patient_trace,
         "agents": agents,
         "impact": [
             {

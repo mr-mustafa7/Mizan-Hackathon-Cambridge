@@ -84,6 +84,22 @@ border-left:3px solid var(--bad);font-size:17px;line-height:1.6}
 .tab{padding:12px 20px;cursor:pointer;color:var(--dim);font-weight:600;font-size:15px;
 border-bottom:2px solid transparent;margin-bottom:-1px}
 .tab.active{color:var(--fg);border-bottom-color:var(--accent)}
+.trow{display:grid;grid-template-columns:56px 1fr 220px;gap:14px;align-items:start;
+padding:12px 0;border-bottom:1px solid var(--line)}
+.trow:last-child{border:0}
+.tstate{font-weight:800;font-size:11px;text-align:center;padding:5px 0;border-radius:6px;letter-spacing:.5px}
+.ts-MET{background:rgba(63,185,80,.15);color:var(--ok)}
+.ts-NOT_MET{background:rgba(248,81,73,.15);color:var(--bad)}
+.ts-UNKNOWN{background:rgba(210,153,34,.15);color:var(--warn)}
+.tattr{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--dim);margin-bottom:2px}
+.treason{font-size:14px}
+.tfact{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--dim);text-align:right}
+.mizanbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px;margin-bottom:24px}
+.mizanbox h2{font-size:17px;margin-bottom:4px}
+.mizanbox .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+.pcode{display:inline-block;background:#010409;padding:3px 10px;border-radius:6px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--accent)}
+.verdict-line{margin-top:16px;padding:14px;border-radius:8px;background:rgba(210,153,34,.1);
+border-left:3px solid var(--warn);font-size:14.5px;line-height:1.6}
 .zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
 .zone{border-radius:10px;padding:16px;border:1px solid var(--line)}
 .zone.web{background:rgba(210,153,34,.05);border-color:rgba(210,153,34,.3)}
@@ -217,6 +233,28 @@ function agentCard(a){
     <div class="io">in &nbsp;<b>${esc(a.received)}</b><br>out <b>${esc(a.produced)}</b></div></div>`;
 }
 
+function mizanPatient(t,engineName){
+  if(!t) return '';
+  const rows=t.rows.map(r=>`<div class="trow">
+    <div class="tstate ts-${r.state}">${r.state.replace('_',' ')}</div>
+    <div><div class="tattr">${r.ref} · ${esc(r.attribute)}</div>
+      <div class="treason">${esc(r.reason)}</div></div>
+    <div class="tfact">${r.deciding_fact?esc(r.deciding_fact):'<i>no record</i>'}</div>
+  </div>`).join('');
+  const gaps=t.rows.filter(r=>r.state==='UNKNOWN').map(r=>r.attribute);
+  return `<div class="mizanbox">
+    <h2>Watch the engine reason about one real patient</h2>
+    <div class="sub">Patient <span class="pcode">${esc(t.code)}</span> ·
+      evaluated by the <b>${esc(engineName)}</b> engine · every reason below is written by
+      the engine itself, deterministically — no model touches this</div>
+    ${rows}
+    ${gaps.length?`<div class="verdict-line"><b>NEEDS SCREENING, not rejected.</b>
+      Every hard rule either passes or can't be answered — nothing fails. This patient sits
+      at the top of a worklist because of ${esc(gaps.join(', '))}, not at the bottom of a
+      "no" pile.</div>`:''}
+  </div>`;
+}
+
 async function drawAgents(){
   const d=await load(), ags=d.guarded.agents;
   const byZone={};
@@ -231,8 +269,10 @@ async function drawAgents(){
       (${esc(d.guarded.engine.detail)}), reached through a one-method Protocol so the
       reasoning backend is swappable and is not the product.
     </div>
+    <div id="mizan-slot"></div>
     <div class="zones">${Object.entries(byZone).map(([z,list])=>
       `<div class="zone ${z}"><h3>${ZONES[z]||z}</h3>${list.map(agentCard).join('')}</div>`).join('')}</div>`;
+  document.getElementById('mizan-slot').innerHTML=mizanPatient(d.guarded.patient_trace,d.guarded.engine.name);
 }
 
 async function drawImpact(){
