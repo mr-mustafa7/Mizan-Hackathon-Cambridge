@@ -45,6 +45,46 @@ QUERY_SHAPE_ALLOWLIST = ("counts",)
 
 app = AgentApp()
 
+#: A human approves by typing this, because browser chat cannot pass run-config.
+#: Deliberately an explicit word plus the exact token: it cannot be produced by
+#: accident, and the token still binds the approval to the numbers that were
+#: actually shown.
+APPROVAL_PREFIX = "APPROVE"
+
+
+def read_approval(text: str) -> str:
+    """Return the token a human typed, or empty string if this is not an approval."""
+    stripped = text.strip()
+    if not stripped.upper().startswith(APPROVAL_PREFIX):
+        return ""
+    return stripped[len(APPROVAL_PREFIX):].strip().strip(":").strip()
+
+
+def earlier_question(context: Context) -> str:
+    """The last real question in this conversation, skipping approvals.
+
+    Needed because an approval message replaces the question in `agent.input`,
+    but the run still has to know what was being asked.
+    """
+    items_record = context.state.config_records.get("items")
+    items = items_record.get("json", []) if items_record is not None else []
+    for item_json in reversed(list(items)):
+        try:
+            item = json.loads(item_json)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if item.get("type") != "message" or item.get("role") != "user":
+            continue
+        content = item.get("content")
+        if isinstance(content, list):
+            content = "".join(
+                part.get("text", "") for part in content if isinstance(part, dict)
+            )
+        if isinstance(content, str) and content.strip() and not read_approval(content):
+            return content.strip()
+    return ""
+
+
 
 def approval_token(aggregate: Aggregate) -> str:
     """A token derived from the exact numbers a human is approving.
@@ -110,6 +150,12 @@ def main(agent: AgentSession, context: Context) -> None:
     min_cell = int(context.run_config.get("policy.min-cell", DEFAULT_MIN_CELL))
     require_approval = bool(context.run_config.get("policy.require-approval", True))
     supplied_token = str(context.run_config.get("policy.approval-token", "") or "")
+
+    # A human may also approve by typing "APPROVE <token>" into chat.
+    typed = read_approval(question)
+    if typed:
+        supplied_token = typed
+        question = earlier_question(context) or question
     abstaining = str(context.run_config.get("policy.abstaining-site", "west-suffolk") or "")
     # Panic button. Skips every model call and completes in under two seconds.
     # If an endpoint is overloaded at 17:29, the demo still runs -- and what it
@@ -153,10 +199,7 @@ def main(agent: AgentSession, context: Context) -> None:
     token = approval_token(aggregate)
     if require_approval and supplied_token != token:
         print(f"\n  BLOCKED - AWAITING SPONSOR SIGN-OFF   token {token}")
-        print(
-            "  Release with:  flwr run . --run-config "
-            f"'policy.approval-token=\"{token}\"'\n"
-        )
+        print(f"  Approve by replying:  APPROVE {token}\n")
         if narrate:
             agent.responses.create(
                 {

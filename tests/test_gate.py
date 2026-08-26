@@ -24,3 +24,17 @@ def test_different_numbers_yield_a_different_token() -> None:
 
 def test_a_site_joining_invalidates_a_prior_approval() -> None:
     assert approval_token(_agg(6)) != approval_token(_agg(6, abstain=True))
+
+
+def test_a_human_can_approve_by_typing() -> None:
+    from trialgrid.agent_app import read_approval
+
+    assert read_approval("APPROVE c0ebf445") == "c0ebf445"
+    assert read_approval("approve: c0ebf445") == "c0ebf445"
+
+
+def test_an_ordinary_question_is_not_an_approval() -> None:
+    from trialgrid.agent_app import read_approval
+
+    assert read_approval("Can this protocol recruit?") == ""
+    assert read_approval("Do you approve of this approach?") == ""
