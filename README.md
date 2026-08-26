@@ -1,9 +1,19 @@
-# TrialGrid
+# Mizan Grid
 
 **A human-supervised team of agents that answers multi-site clinical trial feasibility — without a single patient record leaving any hospital.**
 
 Built at the Collaborative Agent Hackathon, Cambridge, 26 August 2026. Track 2 (Infrastructure).
 **Source:** [github.com/mr-mustafa7/Mizan-Hackathon-Cambridge](https://github.com/mr-mustafa7/Mizan-Hackathon-Cambridge)
+
+> **Mizan Grid is a separate, hackathon-built exploration — not the company.** The
+> three-tier idea (a patient missing one fact belongs at the top of a worklist, not in
+> the "no" pile) comes from [Mizan](https://mizan.health), a clinical trial eligibility
+> engine the author is building separately. Mizan is a single-site product with no
+> cross-site capability; that gap is what this repository explores. **No Mizan source
+> code is published here.** The eligibility module was written from scratch today
+> against the same idea — the four-state model it uses (`MET / NOT_MET / UNKNOWN /
+> NOT_APPLICABLE`) is not original to either of us; the NIH's TrialGPT emits the same
+> four states, and it is public domain.
 
 ---
 
@@ -273,12 +283,6 @@ with the number of sites.
 - **The sites run in one process today.** Their isolation is architectural — no shared state, no model call, counts-only egress — but they are not yet on separate machines. Saying otherwise would be a lie about the threat model.
 - **The demo's model is scripted.** `trialgrid/offline.py` returns fixed, role-appropriate JSON so the A/B contrast is reproducible rather than dependent on a language model having a good day. Against a live model the Sanitizer may catch more or less; the Gatekeeper's checks are unaffected either way, because they are code.
 - **This is not a medical device.** It is feasibility decision support for research staff. It does not diagnose, does not recommend treatment, and makes no enrolment decision.
-
-## Relationship to Mizan
-
-The three-tier idea — that a patient who fails nothing but is missing a fact belongs at the top of a worklist rather than in the "no" pile — comes from Mizan, a clinical trial eligibility engine the author is building separately. Mizan is a single-site product and has no cross-site capability; that gap is what this hackathon project explores.
-
-**No Mizan source code is in this repository.** The eligibility module here was written from scratch today against the same idea. The four-state model (`MET / NOT_MET / UNKNOWN / NOT_APPLICABLE`) is not original to either — the NIH's TrialGPT emits the same four states, and it is public domain.
 
 ## Licence
 

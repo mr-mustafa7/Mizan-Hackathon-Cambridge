@@ -1,4 +1,4 @@
-"""TrialGrid — a human-supervised agent team answering trial feasibility.
+"""Mizan Grid — a human-supervised agent team answering trial feasibility.
 
 Two trust boundaries, one pipeline.
 

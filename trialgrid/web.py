@@ -20,7 +20,7 @@ PORT = 8000
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TrialGrid</title>
+<title>Mizan Grid</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -166,7 +166,7 @@ tbody tr:hover{background:var(--panel-2)}
 .cite b{color:var(--fg)}
 .foot{margin-top:30px;color:var(--dim-2);font-size:12.5px;line-height:1.8}
 </style></head><body><div class="wrap">
-<h1>TrialGrid <span>— can this protocol recruit?</span></h1>
+<h1>Mizan Grid <span>— can this protocol recruit?</span></h1>
 <p class="sub">Three hospitals answer one feasibility question. No patient record leaves any of
 them. One of the four source documents is hostile.</p>
 <div class="q" id="q"></div>
@@ -388,7 +388,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     url = f"http://localhost:{PORT}"
-    print(f"\n  TrialGrid demo → {url}\n  Ctrl-C to stop.\n")
+    print(f"\n  Mizan Grid demo → {url}\n  Ctrl-C to stop.\n")
     try:
         webbrowser.open(url)
     except Exception:

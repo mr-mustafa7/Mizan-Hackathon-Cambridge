@@ -51,7 +51,7 @@ defensible statement is narrower and still sufficient:
 
 ## On our own numbers
 
-Every figure produced by TrialGrid itself — patient counts, criterion costs, relaxation
+Every figure produced by Mizan Grid itself — patient counts, criterion costs, relaxation
 gains — comes from **synthetic cohorts we generated**. They demonstrate what the system
 computes. **They are not evidence about the world**, and three synthetic sites are not a
 study. See the "What we do not claim" section of the README.
